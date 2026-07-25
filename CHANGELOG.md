@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-07-25
+
+### Added
+- improve GEO and visual polish
+
+### Fixed
+- inject Ctrl+Wheel zoom via SendInput instead of PostMessageW
+- restore sticky hero media
+- contain hero on narrow screens
+- scope docs ignore to repository root
 ## [1.24.0] - 2026-07-16
 
 ### Added
