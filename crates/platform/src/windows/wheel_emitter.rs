@@ -129,6 +129,29 @@ fn wheel_input(flags: u32, mouse_data: i32) -> INPUT {
     }
 }
 
+/// What to inject for a drained zoom pulse.
+///
+/// `emit_zoom` only ever runs because the user physically held Ctrl while
+/// scrolling, so in the common case Ctrl is still down and a bare wheel
+/// pulse already reads as Ctrl+Wheel to the target app. The inertia tail
+/// can outlive the key press, and that case needs a real modifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ZoomInjection {
+    None,
+    WheelOnly(i32),
+    CtrlWrapped(i32),
+}
+
+pub(crate) fn zoom_injection(units: i32, ctrl_physically_down: bool) -> ZoomInjection {
+    if units == 0 {
+        ZoomInjection::None
+    } else if ctrl_physically_down {
+        ZoomInjection::WheelOnly(units)
+    } else {
+        ZoomInjection::CtrlWrapped(units)
+    }
+}
+
 fn emit_zoom_via_send_input(units: i32) -> Result<()> {
     // Fallback: Ctrl keydown → Wheel → Ctrl keyup via SendInput.
     // Using KEYEVENTF_UNICODE with scan code for the modifier key to avoid
@@ -188,5 +211,28 @@ fn emit_zoom_via_send_input(units: i32) -> Result<()> {
             )));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_units_injects_nothing() {
+        assert_eq!(zoom_injection(0, true), ZoomInjection::None);
+        assert_eq!(zoom_injection(0, false), ZoomInjection::None);
+    }
+
+    #[test]
+    fn ctrl_held_sends_bare_wheel_pulse() {
+        assert_eq!(zoom_injection(120, true), ZoomInjection::WheelOnly(120));
+        assert_eq!(zoom_injection(-40, true), ZoomInjection::WheelOnly(-40));
+    }
+
+    #[test]
+    fn ctrl_released_wraps_pulse_so_inertia_tail_still_zooms() {
+        assert_eq!(zoom_injection(120, false), ZoomInjection::CtrlWrapped(120));
+        assert_eq!(zoom_injection(-40, false), ZoomInjection::CtrlWrapped(-40));
     }
 }
