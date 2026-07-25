@@ -1,7 +1,11 @@
-//! Wheel emitter using `SendInput` for vertical and `PostMessageW` for horizontal.
-//! PostMessageW is used for horizontal because apps like Figma/Pencil listen
-//! for WM_MOUSEWHEEL with MK_SHIFT flag instead of MOUSEEVENTF_HWHEEL.
-//! Zoom events use PostMessageW with MK_CONTROL.
+//! Wheel emitter using `SendInput` for vertical and zoom, and `PostMessageW`
+//! for horizontal. PostMessageW is used for horizontal because apps like
+//! Figma/Pencil listen for WM_MOUSEWHEEL with MK_SHIFT instead of
+//! MOUSEEVENTF_HWHEEL.
+//!
+//! Zoom uses SendInput rather than PostMessageW: WM_MOUSEWHEEL only bubbles
+//! from child to parent, so posting to GA_ROOT never reaches apps whose
+//! scroll target is a child window (Word's `_WwG` under `OpusApp`).
 
 #![cfg(windows)]
 
@@ -10,15 +14,14 @@ use crate::types::{PlatformError, Result};
 use std::mem;
 use windows_sys::Win32::Foundation::{GetLastError, POINT};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, MOUSEEVENTF_WHEEL, MOUSEINPUT,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
+    KEYEVENTF_KEYUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, VK_CONTROL,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetAncestor, GetCursorPos, PostMessageW, WindowFromPoint, GA_ROOT, WM_MOUSEWHEEL,
 };
 
 const MK_SHIFT: usize = 0x0004;
-const MK_CONTROL: usize = 0x0008;
 
 /// Retrieves the target window for PostMessageW injection.
 /// Returns (hwnd, screen_x, screen_y) or error.
@@ -60,25 +63,19 @@ impl WheelEmitter for WindowsWheelEmitter {
 
 impl ZoomEmitter for WindowsWheelEmitter {
     fn emit_zoom(&self, units: i32) -> Result<()> {
-        if units == 0 {
-            return Ok(());
+        match zoom_injection(units, ctrl_physically_down()) {
+            ZoomInjection::None => Ok(()),
+            ZoomInjection::WheelOnly(u) => emit_vertical(u),
+            ZoomInjection::CtrlWrapped(u) => emit_zoom_with_ctrl(u),
         }
-
-        // PostMessageW with MK_CONTROL — most compatible with design apps like Figma
-        if let Ok((target, x, y)) = get_target_window() {
-            unsafe {
-                let mouse_data = ((units as u32) << 16) as usize;
-                let w_param = MK_CONTROL | mouse_data;
-                let l_param = ((y as usize) << 16) | (x as usize & 0xFFFF);
-                if PostMessageW(target as _, WM_MOUSEWHEEL, w_param as _, l_param as _) != 0 {
-                    return Ok(());
-                }
-            }
-        }
-
-        // Fallback: SendInput sequence — Ctrl down → Wheel → Ctrl up
-        emit_zoom_via_send_input(units)
     }
+}
+
+/// True while either Ctrl key is physically down. Runs on the engine thread,
+/// never in the `WH_MOUSE_LL` callback.
+fn ctrl_physically_down() -> bool {
+    // GetAsyncKeyState sets the high bit while the key is held.
+    (unsafe { GetAsyncKeyState(VK_CONTROL as i32) } as u16 & 0x8000) != 0
 }
 
 fn emit_vertical(units: i32) -> Result<()> {
@@ -152,66 +149,41 @@ pub(crate) fn zoom_injection(units: i32, ctrl_physically_down: bool) -> ZoomInje
     }
 }
 
-fn emit_zoom_via_send_input(units: i32) -> Result<()> {
-    // Fallback: Ctrl keydown → Wheel → Ctrl keyup via SendInput.
-    // Using KEYEVENTF_UNICODE with scan code for the modifier key to avoid
-    // potential VK映射 quirks when the keyboard layout differs.
-    unsafe {
-        let cb = mem::size_of::<INPUT>() as i32;
+/// Ctrl down → wheel → Ctrl up, as one atomic `SendInput` batch.
+///
+/// Only used for the inertia tail, after the user has released Ctrl. Uses a
+/// real `VK_CONTROL` virtual key — the previous `KEYEVENTF_UNICODE` version
+/// sent the character U+001D and never registered as a modifier.
+fn emit_zoom_with_ctrl(units: i32) -> Result<()> {
+    let cb = mem::size_of::<INPUT>() as i32;
 
-        // Ctrl down via Unicode scan (0x1D = left Ctrl in extended scan code)
-        let ctrl_down = INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: 0,
-                    wScan: 0x1D,
-                    dwFlags: KEYEVENTF_UNICODE,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
+    let ctrl = |flags: u32| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_CONTROL,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
             },
-        };
+        },
+    };
 
-        // Wheel
-        let wheel = INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT {
-                    dx: 0,
-                    dy: 0,
-                    mouseData: units as u32,
-                    dwFlags: MOUSEEVENTF_WHEEL,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        };
+    let inputs = [
+        ctrl(0),
+        wheel_input(MOUSEEVENTF_WHEEL, units),
+        ctrl(KEYEVENTF_KEYUP),
+    ];
 
-        // Ctrl up
-        let ctrl_up = INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: 0,
-                    wScan: 0x1D,
-                    dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        };
-
-        let inputs = [ctrl_down, wheel, ctrl_up];
-        let sent = SendInput(3, inputs.as_ptr(), cb);
-        if sent != 3 {
-            return Err(PlatformError::Os(format!(
-                "SendInput zoom injected {}/3 events",
-                sent
-            )));
-        }
-        Ok(())
+    let sent = unsafe { SendInput(3, inputs.as_ptr(), cb) };
+    if sent != 3 {
+        return Err(PlatformError::Os(format!(
+            "SendInput zoom injected {}/3 events",
+            sent
+        )));
     }
+    Ok(())
 }
 
 #[cfg(test)]
