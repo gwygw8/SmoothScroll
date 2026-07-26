@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getDictionary, getDictionarySync } from './dict'
-import { htmlLang, localeAlternates, localePath } from './routing'
+import { locales } from './dict'
+import { CONTENT_UPDATED, htmlLang, localeAlternates, localePath } from './routing'
 
 describe('locale routing', () => {
   it.each([
@@ -30,6 +31,10 @@ describe('locale routing', () => {
       'zh-Hans': 'https://smoothscroll.top/zh/how-it-works/',
       'x-default': 'https://smoothscroll.top/how-it-works/',
     })
+  })
+
+  it.each(locales)('keeps %s evidence date in sync with CONTENT_UPDATED', (locale) => {
+    expect(getDictionarySync(locale).geo?.evidence).toContain(CONTENT_UPDATED)
   })
 
   it('uses valid BCP 47 HTML language tags', () => {

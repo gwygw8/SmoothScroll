@@ -1,5 +1,5 @@
 import type { Dictionary, Locale } from '@/lib/i18n/dict'
-import { BASE_URL, absoluteLocaleUrl, htmlLang, type PageKind } from '@/lib/i18n/routing'
+import { BASE_URL, CONTENT_UPDATED, absoluteLocaleUrl, htmlLang, type PageKind } from '@/lib/i18n/routing'
 
 interface JsonLdProps {
   locale: Locale
@@ -18,6 +18,18 @@ export function JsonLd({ locale, page, dictionary }: JsonLdProps) {
   const organizationId = `${BASE_URL}/#organization`
   const websiteId = `${BASE_URL}/#website`
   const softwareId = `${BASE_URL}/#software`
+  const faqQuestions = [
+    ...(dictionary.geo?.faqQuestion && dictionary.geo.faqAnswer ? [{
+      '@type': 'Question',
+      name: dictionary.geo.faqQuestion,
+      acceptedAnswer: { '@type': 'Answer', text: dictionary.geo.faqAnswer },
+    }] : []),
+    ...(dictionary.faq?.questions ?? []).flatMap(({ q, a }) => q && a ? [{
+      '@type': 'Question',
+      name: q,
+      acceptedAnswer: { '@type': 'Answer', text: a },
+    }] : []),
+  ]
   const graph = [
     {
       '@type': 'Organization', '@id': organizationId, name: 'SmoothScroll', url: `${BASE_URL}/`,
@@ -31,7 +43,7 @@ export function JsonLd({ locale, page, dictionary }: JsonLdProps) {
     {
       '@type': 'WebPage', '@id': `${url}#webpage`, url, name: title, description,
       isPartOf: { '@id': websiteId }, about: { '@id': softwareId }, author: { '@id': organizationId },
-      dateModified: '2026-07-19', inLanguage: htmlLang(locale),
+      dateModified: CONTENT_UPDATED, inLanguage: htmlLang(locale),
     },
     {
       '@type': 'SoftwareApplication', '@id': softwareId, name: 'SmoothScroll', operatingSystem: 'Windows',
@@ -39,11 +51,16 @@ export function JsonLd({ locale, page, dictionary }: JsonLdProps) {
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }, softwareVersion: process.env.NEXT_PUBLIC_APP_VERSION || 'latest',
       screenshot: `${BASE_URL}/assets/screen-poster.webp`, license: 'https://github.com/quangtruong2003/SmoothScroll/blob/master/LICENSE',
     },
-    ...(page === 'home' && dictionary.geo?.faqQuestion && dictionary.geo.faqAnswer ? [{
-      '@type': 'FAQPage', '@id': `${url}#faq`, mainEntity: [{
-        '@type': 'Question', name: dictionary.geo.faqQuestion,
-        acceptedAnswer: { '@type': 'Answer', text: dictionary.geo.faqAnswer },
-      }],
+    ...(page === 'home' && faqQuestions.length ? [{
+      '@type': 'FAQPage', '@id': `${url}#faq`, mainEntity: faqQuestions,
+    }] : []),
+    ...(page === 'how-it-works' ? [{
+      '@type': 'BreadcrumbList',
+      '@id': `${url}#breadcrumb`,
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'SmoothScroll', item: absoluteLocaleUrl(locale, 'home') },
+        { '@type': 'ListItem', position: 2, name: title, item: url },
+      ],
     }] : []),
   ]
 

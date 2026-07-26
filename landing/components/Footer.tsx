@@ -38,7 +38,7 @@ export function Footer() {
           >
             {(f?.links?.github) ?? ''}
           </Link>
-          <Link href="https://github.com/quangtruong2003/SmoothScroll/blob/main/LICENSE" className="hover:text-foreground transition-colors">
+          <Link href="https://github.com/quangtruong2003/SmoothScroll/blob/master/LICENSE" className="hover:text-foreground transition-colors">
             {(f?.links?.license) ?? ''}
           </Link>
         </div>

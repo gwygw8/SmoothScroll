@@ -1,6 +1,7 @@
 import type { Locale } from './dict'
 
 export const BASE_URL = 'https://smoothscroll.top'
+export const CONTENT_UPDATED = '2026-07-19'
 export type PageKind = 'home' | 'how-it-works'
 
 const localePrefixes: Record<Locale, string> = { en: '', vi: '/vi', zh: '/zh' }

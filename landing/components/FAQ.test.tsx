@@ -50,7 +50,16 @@ describe('FAQ', () => {
     await user.click(expandAll)
     await user.click(screen.getByRole('button', { name: /collapse all/i }))
 
-    expect(screen.queryByText('Answer 1')).toBeNull()
-    expect(screen.queryByText('Answer 2')).toBeNull()
+    expect(screen.getByText('Answer 1').closest('[role="region"]')).toHaveAttribute('data-state', 'closed')
+    expect(screen.getByText('Answer 2').closest('[role="region"]')).toHaveAttribute('data-state', 'closed')
+  })
+
+  it('keeps collapsed answers in the markup so crawlers can read them', () => {
+    render(<FAQ dict={mockDict} />)
+
+    const region = screen.getByText('Answer 1').closest('[role="region"]')
+
+    expect(region).toHaveAttribute('data-state', 'closed')
+    expect(region).toHaveTextContent('Answer 1')
   })
 })
