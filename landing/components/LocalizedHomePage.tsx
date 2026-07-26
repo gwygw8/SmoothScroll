@@ -38,10 +38,10 @@ export function LocalizedHomePage({ locale, dictionary: d }: LocalizedHomePagePr
         <TrayPreviewSection dict={{ trayPreview: d.trayPreview }} />
         <Stats dict={{ stats: d.stats }} />
         <Indie dict={{ indie: d.indie }} />
-        <WhatIsSmoothScroll locale={locale} geo={d.geo} />
         <Install dict={{ install: d.install }} />
         <FAQ dict={{ faq: d.faq }} />
         <FinalCTA dict={{ finalCta: d.finalCta }} />
+        <WhatIsSmoothScroll locale={locale} geo={d.geo} />
       </main>
       <Footer />
     </>

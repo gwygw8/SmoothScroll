@@ -65,7 +65,7 @@ export function Stats({ dict }: StatsProps) {
   const starsDisplay = liveStars !== null ? liveStars.toLocaleString() : (fb.stars ?? '-')
 
   return (
-    <section className="py-32 px-4 md:py-48">
+    <section className="px-4 py-[clamp(4.5rem,7vw,6rem)]">
       <div className="container">
         <FadeUp>
           <p className="text-center text-sm font-medium text-muted-foreground uppercase tracking-wider mb-8">

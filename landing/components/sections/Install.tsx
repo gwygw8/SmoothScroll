@@ -113,24 +113,25 @@ export function Install({ dict }: InstallProps) {
   })()
 
   return (
-    <section id="install" className="scroll-mt-20 px-4 py-32 md:py-48">
+    <section id="install" className="scroll-mt-20 px-4 py-[clamp(5rem,8vw,7.5rem)]">
       <div className="container">
         <div className="text-center mb-12">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">{i.title}</h2>
           <p className="text-muted-foreground text-lg">{i.subtitle}</p>
         </div>
 
-        <div className="mx-auto max-w-2xl border-y py-8">{block}</div>
-
-        <div className="text-center mt-8 space-y-4">
-          <DownloadCTA
-            label={i.cta ?? 'Download for Windows'}
-            labelLinux={i.ctaLinux}
-            labelMac={i.ctaMac}
-            variant="brand"
-            size="xl"
-            className="w-full max-w-md"
-          />
+        <div className="mx-auto max-w-2xl rounded-2xl border border-border bg-muted/20 p-8">
+          {block}
+          <div className="mt-6">
+            <DownloadCTA
+              label={i.cta ?? 'Download for Windows'}
+              labelLinux={i.ctaLinux}
+              labelMac={i.ctaMac}
+              variant="brand"
+              size="xl"
+              className="w-full"
+            />
+          </div>
         </div>
       </div>
     </section>

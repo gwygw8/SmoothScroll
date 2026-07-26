@@ -1,7 +1,6 @@
 'use client'
 
 import { DownloadCTA } from '@/components/DownloadCTA'
-import { Separator } from '@/components/ui/separator'
 import type { Dictionary } from '@/lib/i18n/dict'
 
 interface FinalCTAProps {
@@ -19,10 +18,9 @@ export function FinalCTA({ dict }: FinalCTAProps) {
   }
 
   return (
-    <section className="px-4 pt-8 pb-32 md:pt-12 md:pb-48">
+    <section className="px-4 py-[clamp(4rem,6vw,5.5rem)]">
       <div className="container">
-        <Separator className="mb-16" />
-        <div data-final-cta className="mx-auto max-w-3xl space-y-6 rounded-2xl border border-border bg-card p-8 text-center text-card-foreground sm:p-16">
+        <div data-final-cta className="mx-auto max-w-3xl space-y-6 rounded-[1.25rem] border border-border bg-gradient-to-b from-muted/40 to-transparent p-8 text-center text-card-foreground sm:px-12 sm:py-16">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight">
             {f.title}
           </h2>

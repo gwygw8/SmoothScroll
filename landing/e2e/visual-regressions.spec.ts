@@ -55,9 +55,13 @@ test('hero media remains sticky across its scroll range', async ({ page }) => {
   const layout = await page.locator('[data-hero-layout]').evaluate((hero) => {
     const sticky = hero.firstElementChild!.getBoundingClientRect()
     const tail = hero.querySelector('[data-hero-social-proof]')!.getBoundingClientRect()
+    // The scroll cue now occupies the space under the social proof row, so the
+    // dead-space guard measures from whichever of the two sits lowest.
+    const cue = hero.querySelector('[data-hero-scroll-cue]')?.getBoundingClientRect()
+    const lastContentBottom = Math.max(tail.bottom, cue?.bottom ?? tail.bottom)
     return {
       stickyTop: sticky.top,
-      visibleBottomBlank: Math.min(hero.getBoundingClientRect().bottom, window.innerHeight) - tail.bottom,
+      visibleBottomBlank: Math.min(hero.getBoundingClientRect().bottom, window.innerHeight) - lastContentBottom,
     }
   })
 
@@ -65,30 +69,33 @@ test('hero media remains sticky across its scroll range', async ({ page }) => {
   expect(layout.visibleBottomBlank).toBeLessThanOrEqual(132)
 })
 
-test('hero video follows theme and provides scroll distance', async ({ page }) => {
+test('hero renders a single WebGL background and keeps its scroll distance', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
-  await page.evaluate(() => localStorage.setItem('theme', 'light'))
-  await page.reload()
 
-  const lightVideo = page.locator('[data-hero-video="light"]')
-  const darkVideo = page.locator('[data-hero-video="dark"]')
-  await expect(lightVideo).toHaveAttribute('src', /smooth-scrolling-light-scrub\.mp4$/)
-  await expect(darkVideo).toHaveAttribute('src', /smooth-scrolling-dark-scrub\.mp4$/)
-  await expect(lightVideo).toHaveAttribute('muted', '')
-  await expect(lightVideo).toHaveAttribute('playsinline', '')
+  const canvas = page.locator('[data-hero-canvas]')
+
+  // One token-driven canvas replaces the two per-theme scrub videos.
+  await expect(canvas).toHaveCount(1)
+  await expect(page.locator('video[src*="scrub"]')).toHaveCount(0)
   await expect.poll(() => page.locator('[data-hero-layout]').evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThan(900)
-  await expect.poll(() => lightVideo.evaluate((video) => (video as HTMLVideoElement).duration)).toBeGreaterThan(0)
-  await page.evaluate(() => window.scrollTo({ top: 250, behavior: 'instant' }))
-  await expect.poll(() => lightVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(1.4)
-  await expect.poll(() => lightVideo.evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(2.1)
+  await expect.poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width)).toBeGreaterThan(0)
+})
+
+test('hero background survives a theme switch without reloading', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+
+  const canvas = page.locator('[data-hero-canvas]')
+  await expect(canvas).toBeAttached()
 
   await page.evaluate(() => {
     document.documentElement.classList.remove('light')
     document.documentElement.classList.add('dark')
   })
-  await expect(darkVideo).toBeVisible()
-  await expect(lightVideo).toBeHidden()
+
+  await expect(canvas).toHaveCount(1)
+  await expect(canvas).toBeAttached()
 })
 
 test('logo wall uses compact spacing and glyph-only Windows icon', async ({ page }) => {
@@ -128,17 +135,27 @@ test('final CTA follows dark theme surface tokens', async ({ page }) => {
   await expect(page.locator('html')).toHaveClass(/dark/)
   const cta = page.locator('[data-final-cta]')
   await expect(cta).toBeVisible()
+
+  // The card is a token-driven gradient now, so assert the gradient stops and
+  // border resolve from theme tokens rather than a flat background colour.
   const colors = await cta.evaluate((element) => {
     const probe = document.createElement('div')
-    probe.style.backgroundColor = 'hsl(var(--card))'
+    probe.style.backgroundColor = 'hsl(var(--muted) / 0.4)'
     document.body.append(probe)
-    const expected = getComputedStyle(probe).backgroundColor
+    const mutedStop = getComputedStyle(probe).backgroundColor
+    probe.style.backgroundColor = 'hsl(var(--border))'
+    const borderToken = getComputedStyle(probe).backgroundColor
     probe.remove()
+    const styles = getComputedStyle(element)
     return {
-      actual: getComputedStyle(element).backgroundColor,
-      expected,
+      image: styles.backgroundImage,
+      borderColor: styles.borderTopColor,
+      mutedStop,
+      borderToken,
     }
   })
 
-  expect(colors.actual).toBe(colors.expected)
+  expect(colors.image).toContain('gradient')
+  expect(colors.image).toContain(colors.mutedStop)
+  expect(colors.borderColor).toBe(colors.borderToken)
 })

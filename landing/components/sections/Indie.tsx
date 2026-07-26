@@ -13,7 +13,7 @@ export function Indie({ dict }: IndieProps) {
   const i = dict?.indie ?? { title: '', subtitle: '', points: [], cta: '' }
 
   return (
-    <section className="py-32 px-4 md:py-48">
+    <section className="px-4 py-[clamp(3rem,5vw,4.5rem)]">
       <div className="container">
         <div className="mx-auto max-w-2xl">
           <FadeUp>

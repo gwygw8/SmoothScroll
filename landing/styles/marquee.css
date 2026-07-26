@@ -104,3 +104,17 @@
   .features-bento > [data-feature-card="0"], .features-bento > [data-feature-card="1"], .features-bento > [data-feature-card="2"] { grid-column: auto; grid-row: auto; }
   .features-continuation { margin-top: 0; padding: 0; border-top: 0; }
 }
+
+/* Hero scroll cue — the wheel dot that drops and fades, hinting the page scrolls. */
+@keyframes hero-wheel {
+  0%   { transform: translateY(0);    opacity: 0; }
+  25%  {                              opacity: 1; }
+  75%  { transform: translateY(10px); opacity: 1; }
+  100% { transform: translateY(12px); opacity: 0; }
+}
+
+.animate-hero-wheel { animation: hero-wheel 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-wheel { animation: none; }
+}
