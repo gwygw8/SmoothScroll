@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
 
@@ -83,31 +83,60 @@ function compile(gl: WebGLRenderingContext, type: number, source: string) {
 
 export function HeroBackground3D() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const fallbackRef = useRef<HTMLDivElement>(null)
+  const [isFallbackVisible, setIsFallbackVisible] = useState(false)
+  const [fallbackPoster, setFallbackPoster] = useState(`${BASE_PATH}/assets/smooth-scrolling-light-poster.webp`)
 
   useEffect(() => {
     const canvas = canvasRef.current
     const hero = canvas?.closest<HTMLElement>('[data-hero-layout]')
     if (!canvas || !hero) return
 
-    const gl = canvas.getContext('webgl', { alpha: true, antialias: true, powerPreference: 'low-power' })
-    if (!gl) return
-
-    const showFallback = () => {
-      if (fallbackRef.current) fallbackRef.current.style.opacity = '1'
-      canvas.style.opacity = '0'
+    let raf = 0
+    let isFallback = false
+    const updateFallbackPoster = () => {
+      setFallbackPoster(`${BASE_PATH}/assets/smooth-scrolling-${document.documentElement.classList.contains('dark') ? 'dark' : 'light'}-poster.webp`)
     }
-    canvas.addEventListener('webglcontextlost', showFallback)
+    const fallbackThemeObserver = new MutationObserver(updateFallbackPoster)
+    const showFallback = () => {
+      isFallback = true
+      cancelAnimationFrame(raf)
+      raf = 0
+      updateFallbackPoster()
+      fallbackThemeObserver.observe(document.documentElement, { attributeFilter: ['class'] })
+      setIsFallbackVisible(true)
+    }
+    const cleanupFallback = () => fallbackThemeObserver.disconnect()
+
+    const gl = canvas.getContext('webgl', {
+      alpha: true,
+      antialias: true,
+      // The shader writes straight (non-premultiplied) colour; without this the
+      // compositor would treat RGB as already multiplied and wash the ribbons
+      // out to nothing over a light background.
+      premultipliedAlpha: false,
+      powerPreference: 'low-power',
+    })
+    if (!gl) {
+      showFallback()
+      return cleanupFallback
+    }
 
     const vs = compile(gl, gl.VERTEX_SHADER, VERT)
     const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG)
     const program = gl.createProgram()
-    if (!vs || !fs || !program) return showFallback()
+    if (!vs || !fs || !program) {
+      showFallback()
+      return cleanupFallback
+    }
     gl.attachShader(program, vs)
     gl.attachShader(program, fs)
     gl.linkProgram(program)
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return showFallback()
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      showFallback()
+      return cleanupFallback
+    }
     gl.useProgram(program)
+    canvas.addEventListener('webglcontextlost', showFallback)
 
     // one screen-wide strip, subdivided along x so the wave can bend it
     const SEGMENTS = 180
@@ -159,7 +188,6 @@ export function HeroBackground3D() {
     let progress = 0
     let eased = 0
     let time = motionPreference.matches ? 14 : 0
-    let raf = 0
     let last = performance.now()
     let visible = true
 
@@ -217,6 +245,7 @@ export function HeroBackground3D() {
     themeObserver.observe(document.documentElement, { attributeFilter: ['class'] })
 
     const configureMotion = () => {
+      if (isFallback) return
       cancelAnimationFrame(raf)
       raf = 0
       readProgress()
@@ -236,6 +265,7 @@ export function HeroBackground3D() {
 
     return () => {
       cancelAnimationFrame(raf)
+      cleanupFallback()
       observer.disconnect()
       themeObserver.disconnect()
       canvas.removeEventListener('webglcontextlost', showFallback)
@@ -249,16 +279,16 @@ export function HeroBackground3D() {
   return (
     <>
       <div
-        ref={fallbackRef}
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-0 transition-opacity duration-300 dark:hidden"
-        style={{ backgroundImage: `url(${BASE_PATH}/assets/smooth-scrolling-light-poster.webp)` }}
+        data-hero-fallback
+        className={`pointer-events-none absolute inset-0 bg-cover bg-center transition-opacity duration-300 ${isFallbackVisible ? 'opacity-100' : 'opacity-0'}`}
+        style={{ backgroundImage: `url(${fallbackPoster})` }}
       />
       <canvas
         ref={canvasRef}
         data-hero-canvas
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full transition-opacity duration-300"
+        className={`pointer-events-none absolute inset-0 h-full w-full transition-opacity duration-300 ${isFallbackVisible ? 'opacity-0' : 'opacity-100'}`}
       />
     </>
   )

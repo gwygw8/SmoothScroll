@@ -82,6 +82,91 @@ test('hero renders a single WebGL background and keeps its scroll distance', asy
   await expect.poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width)).toBeGreaterThan(0)
 })
 
+test('hero falls back to its current-theme poster when WebGL is unavailable', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('theme', 'light')
+    const getContext = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, contextId, ...args) {
+      if (contextId === 'webgl') return null
+      return getContext.call(this, contextId, ...args)
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
+  await page.goto('/')
+
+  const fallback = page.locator('[data-hero-fallback]')
+  const canvas = page.locator('[data-hero-canvas]')
+  await expect(fallback).toHaveCSS('opacity', '1')
+  await expect(fallback).toHaveCSS('background-image', /smooth-scrolling-light-poster\.webp/)
+  await expect(canvas).toHaveCSS('opacity', '0')
+
+  await page.locator('html').evaluate((element) => {
+    element.classList.remove('light')
+    element.classList.add('dark')
+  })
+
+  await expect(fallback).toHaveCSS('background-image', /smooth-scrolling-dark-poster\.webp/)
+})
+
+test('hero stops animation and exposes its poster after WebGL context loss', async ({ page }) => {
+  await page.addInitScript(() => {
+    const requestAnimationFrame = window.requestAnimationFrame
+    const cancelAnimationFrame = window.cancelAnimationFrame
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const heroFrameIds = new Set<number>()
+
+    window.requestAnimationFrame = (callback) => {
+      const id = requestAnimationFrame.call(window, callback)
+      if (callback.toString().includes('time +=')) {
+        heroFrameIds.add(id)
+        const root = document.documentElement
+        root.dataset.heroRequestedFrames = String(Number(root.dataset.heroRequestedFrames ?? '0') + 1)
+      }
+      return id
+    }
+    window.cancelAnimationFrame = (id) => {
+      if (heroFrameIds.delete(id)) {
+        const root = document.documentElement
+        root.dataset.heroCancelledFrames = String(Number(root.dataset.heroCancelledFrames ?? '0') + 1)
+      }
+      cancelAnimationFrame.call(window, id)
+    }
+    motionPreference.addEventListener('change', () => {
+      const root = document.documentElement
+      root.dataset.heroMotionChanges = String(Number(root.dataset.heroMotionChanges ?? '0') + 1)
+    })
+  })
+  await page.goto('/')
+
+  const canvas = page.locator('[data-hero-canvas]')
+  const fallback = page.locator('[data-hero-fallback]')
+  const heroRequestedFrames = async () => Number(await page.locator('html').getAttribute('data-hero-requested-frames') ?? '0')
+  const motionChanges = async () => Number(await page.locator('html').getAttribute('data-hero-motion-changes') ?? '0')
+
+  await expect.poll(() => canvas.evaluate((element) => (element as HTMLCanvasElement).width)).toBeGreaterThan(0)
+  await expect.poll(heroRequestedFrames).toBeGreaterThan(0)
+  const cancelledBefore = Number(await page.locator('html').getAttribute('data-hero-cancelled-frames') ?? '0')
+
+  await canvas.evaluate((element) => {
+    const context = (element as HTMLCanvasElement).getContext('webgl')
+    context?.getExtension('WEBGL_lose_context')?.loseContext()
+  })
+
+  await expect(fallback).toHaveCSS('opacity', '1')
+  await expect(canvas).toHaveCSS('opacity', '0')
+  await expect.poll(async () => Number(await page.locator('html').getAttribute('data-hero-cancelled-frames') ?? '0')).toBeGreaterThan(cancelledBefore)
+
+  const requestedAfterLoss = await heroRequestedFrames()
+  const changesBeforeReduce = await motionChanges()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(motionChanges).toBeGreaterThan(changesBeforeReduce)
+  expect(await heroRequestedFrames()).toBe(requestedAfterLoss)
+
+  const changesBeforeRestore = await motionChanges()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await expect.poll(motionChanges).toBeGreaterThan(changesBeforeRestore)
+  expect(await heroRequestedFrames()).toBe(requestedAfterLoss)
+})
+
 test('hero background survives a theme switch without reloading', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
